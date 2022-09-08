@@ -1,0 +1,231 @@
+
+
+
+
+--- Creating and Inserting Values in the Cars Table that will be used as sample table for removing duplicates
+
+drop table if exists cars;
+create table if not exists cars
+(
+    id      int,
+    model   varchar(50),
+    brand   varchar(40),
+    color   varchar(30),
+    make    int
+);
+
+insert into cars values (1, 'Model S', 'Tesla', 'Blue', 2018);
+insert into cars values (2, 'EQS', 'Mercedes-Benz', 'Black', 2022);
+insert into cars values (3, 'iX', 'BMW', 'Red', 2022);
+insert into cars values (4, 'Ioniq 5', 'Hyundai', 'White', 2021);
+insert into cars_bkp values (5, 'Model S', 'Tesla', 'Silver', 2018);
+insert into cars_bkp values (6, 'Ioniq 5', 'Hyundai', 'Green', 2021);
+
+
+-- Get all the records from the cars table
+select * from cars
+order by model, brand;
+
+
+-- Get the duplicated records only
+select model, brand, count(*) from cars
+group by model, brand
+having count(*) >1;
+
+
+-- Get the highest Id for the duplicated records
+select model, brand, max(id)
+from cars
+group by model, brand
+having count(*) > 1
+
+
+/* ##########################################################################
+   <<<<>>>> Scenario 1: Data duplicated based on SOME of the columns <<<<>>>>
+   ########################################################################## */
+-->> Remove duplicate records if ID columns are unique
+
+
+-- Solution 1: Delete the duplicated records based on unique identifier
+DELETE FROM cars
+WHERE id in (
+	select max(id)
+    from cars
+    group by model, brand
+    having count(*) > 1
+)
+
+
+-- Solution 2: Remove duplicates using SELF JOIN
+DELETE FROM cars
+WHERE id in (
+		SELECT c2.id
+		from cars c1
+		JOIN cars c2
+		ON c1.model = c2.model 
+		AND c1.brand = c2.brand
+		WHERE c1.id < c2.id
+	)
+
+
+-- Solution 3: Window function to delete duplicate records
+
+DELETE FROM cars
+WHERE id in (
+			SELECT id FROM (
+					SELECT * ,
+					row_number() over (partition by model, brand) as rn
+					FROM cars) x	
+		WHERE x.rn > 1
+	);
+
+
+-- Solution 4: Using MIN function, this deletes multiple duplicate records
+DELETE FROM cars
+WHERE id not in (
+SELECT MIN(id)
+FROM cars
+GROUP BY model, brand)
+
+
+
+-->> Solution 5: Create backup table, not ideal for PROD use, can be used in Dev env.
+CREATE TABLE cars_bkp
+AS
+SELECT * FROM cars
+WHERE 1=2;
+
+-- Load unique records from the cars table into cars_bkp table
+INSERT INTO cars_bkp (
+SELECT * FROM cars
+WHERE id in (SELECT min(id)
+			 FROM cars
+			 GROUP BY model, brand)
+			 )
+
+DROP TABLE cars
+
+ALTER TABLE cars_bkp rename to cars
+
+
+
+-- Solution 6: Alternate backup table, Use backup table without dropping that table
+
+CREATE TABLE cars_bkp
+AS
+SELECT * FROM cars
+WHERE 1=2;
+
+-- Load unique records from the cars table into cars_bkp table
+INSERT INTO cars_bkp (
+SELECT * FROM cars
+WHERE id in (SELECT min(id)
+			 FROM cars
+			 GROUP BY model, brand)
+			 )
+
+-- Insert of dropping the table, empty the original table
+TRUNCATE TABLE cars;
+
+INSERT INTO cars
+SELECT * FROM cars_bkp;
+
+DROP TABLE cars_bkp
+
+
+
+
+--- Solution if the ID columns are also duplicated
+/* ##########################################################################
+   <<<<>>>> Scenario 2: Data duplicated based on ALL of the columns <<<<>>>>
+   ########################################################################## */
+
+
+insert into cars values (1, 'Model S', 'Tesla', 'Blue', 2018);
+insert into cars values (2, 'EQS', 'Mercedes-Benz', 'Black', 2022);
+insert into cars values (3, 'iX', 'BMW', 'Red', 2022);
+insert into cars values (4, 'Ioniq 5', 'Hyundai', 'White', 2021);
+insert into cars values (1, 'Model S', 'Tesla', 'Blue', 2018);
+insert into cars values (4, 'Ioniq 5', 'Hyundai', 'White', 2021);
+
+drop table cars
+
+drop table if exists cars;
+create table if not exists cars
+(
+    id      int,
+    model   varchar(50),
+    brand   varchar(40),
+    color   varchar(30),
+    make    int
+);
+insert into cars values (1, 'Model S', 'Tesla', 'Blue', 2018);
+insert into cars values (2, 'EQS', 'Mercedes-Benz', 'Black', 2022);
+insert into cars values (3, 'iX', 'BMW', 'Red', 2022);
+insert into cars values (4, 'Ioniq 5', 'Hyundai', 'White', 2021);
+insert into cars values (1, 'Model S', 'Tesla', 'Blue', 2018);
+insert into cars values (4, 'Ioniq 5', 'Hyundai', 'White', 2021);
+
+select * from cars
+order by model, brand;
+
+
+
+
+-->> Solution 1: Delete duplicate using CTID (only in PostgreSQL)
+select *, CTID from cars
+
+delete from cars
+where ctid in (
+select max(ctid)
+from cars
+group by model, brand
+having count(*)>1
+			 )
+			 
+			 
+-->> Solution 2: For MySQL and SQL Server, PostGreSQL, Oracle etc. Will owrk in all the RDBMS
+-->> Create temporary unique ID
+ALTER TABLE cars
+ADD column row_num int generated always as identity;
+delete from cars
+where row_num in (
+select max(row_num)
+from cars
+group by model, brand
+having count(*)>1
+			 )
+			 
+ALTER TABLE cars DROP column row_num;
+
+
+
+-->> Solution 3: Create backup table
+CREATE TABLE cars_bkp AS
+SELECT DISTINCT * FROM cars;
+
+select * from cars_bkp;
+select * from cars;
+
+DROP TABLE cars
+ALTER TABLE cars_bkp rename to cars;
+
+
+
+-->> Solution 4: so that the table that is dropped doesn't crash/break the system. 
+CREATE TABLE cars_bkp AS
+SELECT DISTINCT * FROM cars;
+
+select * from cars_bkp;
+
+truncate table cars;
+
+insert into cars 
+SELECT * FROM cars_bkp
+
+DROP TABLE cars_bkp;
+
+
+
+
+
