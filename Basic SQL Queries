@@ -1,0 +1,6 @@
+--- JOIN
+select es.jobtitle, AVG(salary) as AVG_Salary from EmployeeDemographics as ed
+INNER JOIN EmployeeSalary as es
+ON ed.employeeid = es.EmployeeID
+where jobtitle = 'Salesman'
+group by es.jobtitle
